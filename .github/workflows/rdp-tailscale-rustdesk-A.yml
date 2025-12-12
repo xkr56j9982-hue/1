@@ -239,54 +239,6 @@ jobs:
           python -m pip install --force-reinstall pyautogui pynput pillow
           python -c "import pyautogui, pynput, PIL; print('Python libs OK')"
 
-      - name: Install RustDesk
-        run: |
-          $rdExe = "C:\Program Files\RustDesk\rustdesk.exe"
-          if (-not (Test-Path $rdExe)) {
-            try {
-              $rdUrl = "https://github.com/rustdesk/rustdesk/releases/download/1.3.1/rustdesk-1.3.1-x86_64.msi"
-              $installerPath = "$env:TEMP\rustdesk.msi"
-              Invoke-WebRequest -Uri $rdUrl -OutFile $installerPath
-              Start-Process msiexec.exe -ArgumentList "/i","`"$installerPath`"","/quiet","/norestart" -Wait
-              Remove-Item $installerPath -Force
-            } catch {
-              Write-Host "MSI install failed, trying winget…"
-              winget install --id RustDesk.RustDesk -e --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
-            }
-          }
-          if (-not (Test-Path $rdExe)) { Write-Error "RustDesk not found after install"; exit 1 }
-          Write-Host "RustDesk installed."
-
-      - name: Open RustDesk ports (TCP 21115-21119, UDP 21116)
-        run: |
-          for ($p=21115; $p -le 21119; $p++) {
-            $name = "APP-PORT-TCP-$p"
-            netsh advfirewall firewall delete rule name=$name 2>$null
-            netsh advfirewall firewall add rule name=$name dir=in action=allow protocol=TCP localport=$p
-          }
-          $udpName = "APP-PORT-UDP-21116"
-          netsh advfirewall firewall delete rule name=$udpName 2>$null
-          netsh advfirewall firewall add rule name=$udpName dir=in action=allow protocol=UDP localport=21116
-
-      - name: Launch RustDesk (foreground) + Screenshot to Gofile
-        run: |
-          $rdExe = "C:\Program Files\RustDesk\rustdesk.exe"
-          Start-Process -FilePath $rdExe -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 5
-
-          $screenshotPath = "$env:TEMP\rustdesk_${{ matrix.id }}.png"
-          Add-Type -AssemblyName System.Windows.Forms
-          Add-Type -AssemblyName System.Drawing
-          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-          $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-          $bitmap.Save($screenshotPath, [System.Drawing.Imaging.ImageFormat]::Png)
-          $graphics.Dispose(); $bitmap.Dispose()
-
-          $curlResult = curl -F "file=@$screenshotPath" https://store1.gofile.io/uploadFile
-          $json = $curlResult | ConvertFrom-Json
-          if ($json.status -eq "ok") { "SCREENSHOT_URL=$($json.data.downloadPage)" | Out-File -Append $env:GITHUB_ENV }
 
       - name: Keep alive (to ${{ env.RUNTIME_MINUTES }} mins)
         run: |
